@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "rspec"
+require "rspec/core"
 require "rspec/query_profiler/memoized_helpers"
 
 # The namespace for this gem.
