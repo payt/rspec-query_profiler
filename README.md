@@ -21,7 +21,7 @@ PROFILE=2 rspec spec/users/destroy_spec.rb
 ```
 
 ### Features
-- It does not log queries triggered during any of RSpec callbacks.
+- It does not log queries triggered during any of the RSpec callbacks.
 - It knows about FactoryBot, skipping queries that are triggered by it.
 
 ### Known limitations 
