@@ -7,47 +7,42 @@ module RSpec
     module MemoizedHelpers
       private
 
-      def query_logger(name:, type:)
+      def query_logger(type:, &block)
         return yield unless ENV["PROFILE"]&.to_i&.positive?
+        return yield unless type == :subject || query_logger_within_subject?
 
-        queries = []
+        RSpec.current_example.instance_variable_set(:@query_logger_within_subject, true)
+        ActiveSupport::Notifications.subscribed(
+          query_logger_callback(type: type),
+          "sql.active_record",
+          &block
+        )
+      end
 
-        ActiveSupport::Notifications.subscribe("sql.active_record") do |*args|
-          event = ActiveSupport::Notifications::Event.new(*args).payload
-          next if event[:name].in?([nil, "SCHEMA"])
+      def query_logger_within_subject?
+        RSpec.current_example.instance_variable_get(:@query_logger_within_subject)
+      end
 
-          queries << {
-            rspec_name: name,
-            rspec_type: type,
-            event_name: event[:name],
-            sql: event[:sql],
-            binds: event[:binds].map(&:value),
-            factory: caller.any? { |call| call.match?(/factory_bot/) }
+      def query_logger_callback(type:)
+        lambda do |*args|
+          query_details = args[4]
+          next if query_details.fetch(:name) == "SCHEMA"
+          next if query_details.fetch(:sql).starts_with?("BEGIN", "SAVEPOINT", "RELEASE SAVEPOINT")
+
+          RSpec.current_example.instance_variable_get(:@query_logger) << {
+            type: type,
+            name: query_details.fetch(:name),
+            sql: query_details.fetch(:sql),
+            binds: query_details.fetch(:type_casted_binds)
           }
-        end
-
-        yield
-      ensure
-        if queries&.any?
-          # TODO: make a config option to be able to determine which types to profile. For now we only profile the subjects
-          queries.reject! { |e| e.fetch(:factory) || e.fetch(:rspec_type) == :let }
-
-          queries.group_by { |query| query.fetch(:rspec_name) }.each do |rspec_name, events|
-            rspec_type = events.first.fetch(:rspec_type)
-
-            puts "#{rspec_type}(:#{rspec_name}) -> query count: #{events.size}"
-
-            next unless ENV["PROFILE"].to_i > 1
-
-            events.group_by { |event| event.fetch(:sql) }.each do |sql, sqls|
-              puts "- (#{sqls.size}): '#{sqls.first.fetch(:event_name)}' -> #{sql} [#{sqls.first.fetch(:binds)}]"
-            end
-          end
         end
       end
 
       module ClassMethods
+        ### QUERY_PROFILER START ###
+        ### QUERY_PROFILER: add `type` argument to distinguise between :subject and :let ###
         def let(name, type = :let, &block)
+          ### QUERY_PROFILER END ###
           # We have to pass the block directly to `define_method` to
           # allow it to use method constructs like `super` and `return`.
           raise "#let or #subject called without a block" if block.nil?
@@ -81,7 +76,10 @@ module RSpec
           else
             define_method(name) do
               __memoized.fetch_or_store(name) do
-                query_logger(type: type, name: name) { super(&nil) }
+                ### QUERY_PROFILER START ###
+                ### QUERY_PROFILER: wrap the subject and let blocks to be able to count their queries ###
+                query_logger(type: type) { super(&nil) }
+                ### QUERY_PROFILER END ###
               end
             end
           end
@@ -91,14 +89,18 @@ module RSpec
         # which is just a regular let. (For RSpec it does not matter, renaming all subjects to lets will work just fine)
         def subject(name = nil, &block)
           if name
+            ### QUERY_PROFILER START ###
             let(name, :subject, &block)
+            ### QUERY_PROFILER END ###
             alias_method :subject, name
 
             self::NamedSubjectPreventSuper.__send__(:define_method, name) do
               raise NotImplementedError, "`super` in named subjects is not supported"
             end
           else
+            ### QUERY_PROFILER START ###
             let(:subject, :subject, &block)
+            ### QUERY_PROFILER END ###
           end
         end
       end
