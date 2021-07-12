@@ -3,17 +3,6 @@
 require "rspec/core/example"
 
 module RSpec
-  module QueryProfiler
-    module Example
-      def initialize(*)
-        @query_logger = []
-        super
-      end
-    end
-  end
-end
-
-module RSpec
   module Core
     class Example
       def run(example_group_instance, reporter)
