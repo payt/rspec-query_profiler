@@ -24,9 +24,13 @@ PROFILE=2 rspec spec/users/destroy_spec.rb
 ```
 
 ### Known limitations 
-- It treats the `subject` as something special. RSpec doesn't care if you use `let` instead of `subject` in your specs, this gem does.
-- It does not log queries that are triggered during the following callbacks: suite, all, context.
+- It treats the `subject` as something special. RSpec doesn't care if you use either `let` or `subject` in your specs, this gem does. This gem expects exactly one `subject` per example.
+- It does not log queries that are triggered during the following callbacks: `suite`, `all`, `context`. These callbacks can span multiple examples, so the queries they trigger cannot unambigiously get assigned to individuel examples (without duplication). They could be logged separatly although these callbacks will probably not trigger a lot of queries in practise.
 
 ### Todo
-- Create a diffable log of all queries which can be checked into the repo to be able to track changes.
-- Make it visual in the console log which queries are executed more than once.
+- Create a diffable log of all queries which can be checked into the repo to be able to track performance degredation.
+    - The CI could check if the actual number of triggered queries differs from the list checked into the repo.
+    - This would force the list to be updated in the repo and makes it visible to reviewers whenever the counts get changed.
+    - On the CI the queries triggered by the test setup itself are not relevant.
+    - During local testruns the query counts should always be updated automatically so these changes can be checked in.
+- It should be clearly visible in the console which queries are executed more than once per example. Makes it easier to track down N+1 queries.
