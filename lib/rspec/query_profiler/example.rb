@@ -1,15 +1,12 @@
 # frozen_string_literal: true
 
-require "rspec/core/example"
-
 module RSpec
-  module Core
-    class Example
+  module QueryProfiler
+    module Example
       def run(example_group_instance, reporter)
         @example_group_instance = example_group_instance
         @reporter = reporter
-        ### QUERY_PROFILER START ###
-        ### QUERY_PROFILER: add some instance variabeles ###
+        ### QUERY_PROFILER START: add some instance variables ###
         @query_logger = []
         @query_logger_within_subject = false
         ### QUERY_PROFILER END ###
@@ -17,14 +14,13 @@ module RSpec
         RSpec.current_example = self
 
         start(reporter)
-        Pending.mark_pending!(self, pending) if pending?
+        Core::Pending.mark_pending!(self, pending) if pending?
 
         begin
           if skipped?
-            Pending.mark_pending! self, skip
+            Core::Pending.mark_pending! self, skip
           elsif !RSpec.configuration.dry_run?
-            ### QUERY_PROFILER START ###
-            ### QUERY_PROFILER: wrap the entire example run in a block to log all its queries ###
+            ### QUERY_PROFILER START: wrap the entire example run in a block to log all its queries ###
             with_query_logger do
               ### QUERY_PROFILER END ###
               with_around_and_singleton_context_hooks do
@@ -33,13 +29,13 @@ module RSpec
                 @example_group_instance.instance_exec(self, &@example_block)
 
                 if pending?
-                  Pending.mark_fixed! self
+                  Core::Pending.mark_fixed! self
 
-                  raise Pending::PendingExampleFixedError,
+                  raise Core::Pending::PendingExampleFixedError,
                         "Expected example to fail since it is pending, but it passed.",
                         [location]
                 end
-              rescue Pending::SkipDeclaredInExample => _e
+              rescue Core::Pending::SkipDeclaredInExample => _e
               # The "=> _" is normally useless but on JRuby it is a workaround
               # for a bug that prevents us from getting backtraces:
               # https://github.com/jruby/jruby/issues/4467
@@ -74,8 +70,6 @@ module RSpec
       private
 
       def with_query_logger(&block)
-        return yield unless ENV["PROFILE"]&.to_i&.positive?
-
         ActiveSupport::Notifications.subscribed(
           query_logger_callback,
           "sql.active_record",
@@ -86,8 +80,7 @@ module RSpec
       def query_logger_callback(type: nil)
         lambda do |*args|
           query_details = args[4]
-          next if query_details.fetch(:name) == "SCHEMA"
-          next if query_details.fetch(:sql).starts_with?("BEGIN", "SAVEPOINT", "RELEASE SAVEPOINT")
+          next if query_details.fetch(:name).in?(IGNORED_QUERIES)
 
           RSpec.current_example.instance_variable_get(:@query_logger) << {
             type: type,
@@ -106,18 +99,27 @@ module RSpec
         lets.uniq.each { |let| subjects.reject! { |subject| subject.slice(:sql, :binds) == let.slice(:sql, :binds) } }
         subjects.each { |subject| all.reject! { |a| a.slice(:sql, :binds) == subject.slice(:sql, :binds) } }
 
-        return puts "app: #{subjects.size}, test: #{all.size}" unless ENV["PROFILE"].to_i > 1
+        puts "app: #{subjects.size}, test: #{all.size}"
+        return unless PROFILE_LEVEL > 1
 
         puts "app: #{subjects.size}"
         subjects.each do |query|
           puts "  \e[36m#{query.fetch(:name)} \e[34m#{query.fetch(:sql)}\e[0m #{query.fetch(:binds)}"
         end
         puts "\n" if subjects.any? && all.any?
+        return unless PROFILE_LEVEL > 2
+
         puts "test: #{all.size}"
         all.each do |query|
           puts "  \e[36m#{query.fetch(:name)} \e[34m#{query.fetch(:sql)}\e[0m #{query.fetch(:binds)}"
         end
       end
+    end
+  end
+
+  module Core
+    class Example
+      prepend QueryProfiler::Example if QueryProfiler::PROFILE_LEVEL.positive?
     end
   end
 end
