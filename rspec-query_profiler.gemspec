@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
 $LOAD_PATH.unshift File.expand_path("lib", __dir__)
-require "rspec/query_profiler"
+require "rspec/query_profiler/version"
 
 Gem::Specification.new do |spec|
   spec.name          = "rspec-query_profiler"
-  spec.version       = RSpec::QueryProfiler::VERSION
+  spec.version       = RSpec::QueryProfiler::Version::STRING
   spec.authors       = ["Payt devs"]
   spec.email         = ["devs@paytsoftware.com"]
 
