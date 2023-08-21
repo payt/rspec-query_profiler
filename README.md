@@ -10,7 +10,7 @@ PROFILE=1 rspec spec/users/destroy_spec.rb
 # app: 2, test: 1
 ```
 
-When you need more details:
+When you want all queries triggered by the code:
 
 ```console
 PROFILE=2 rspec spec/users/destroy_spec.rb
@@ -20,10 +20,23 @@ PROFILE=2 rspec spec/users/destroy_spec.rb
 #   User Destroy DELETE FROM "users" WHERE "users"."id" = $1 [15]
 
 # test: 1
+```
+
+And all queries triggered by the test setup:
+
+```console
+PROFILE=3 rspec spec/users/destroy_spec.rb
+
+# app: 2
+#   User Load SELECT "users".* FROM "users" WHERE "users"."id" = $1 LIMIT $2 [15, 1]
+#   User Destroy DELETE FROM "users" WHERE "users"."id" = $1 [15]
+
+# test: 1
 #   User Create INSERT INTO "users" ("email", "password") VALUES ($1, $2) RETURNING "id" ["test@example.com", "9be35b416ad44c24de8d7fa434ab5d5f"]
 ```
 
-### Known limitations 
+### Known limitations
+- When using Spring you need to stop it before a change in the PROFILE environment variable is picked up.
 - It treats the `subject` as something special. RSpec doesn't care if you use either `let` or `subject` in your specs, this gem does. This gem expects exactly one `subject` per example.
 - It does not log queries that are triggered during the following callbacks: `suite`, `all`, `context`. These callbacks can span multiple examples, so the queries they trigger cannot unambigiously get assigned to individuel examples (without duplication). They could be logged separatly although these callbacks will probably not trigger a lot of queries in practise.
 
